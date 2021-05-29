@@ -15,12 +15,12 @@ crate-type = ["cdylib"]
 # introducing breaking changes in patch releases.
 
 [build-dependencies]
-neon-build = "=0.4.0"
+neon-build = "=0.8.2"
 
 [dependencies]
-neon = "=0.4.0"
+neon = "=0.8.2"
 fs_extra = "1.2.0"
 serde_json = "1.0.58"
-neon-serde = "=0.4.0"
+neon-serde = { git = "https://github.com/antonok-edm/neon-serde/", rev = "ee44a7e465e8082f7d7e5a7fe2980188930a50cf" }
 uuid = "0.8.1"
 seshat = { version = "2.2.4", path = "../../" }

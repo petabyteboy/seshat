@@ -97,7 +97,7 @@ impl Task for SearchTask {
     }
 }
 
-pub(crate) struct AddBacklogTask {
+/*pub(crate) struct AddBacklogTask {
     pub(crate) receiver: Receiver<seshat::Result<bool>>,
 }
 
@@ -567,4 +567,4 @@ impl Task for ShutDownRecoveryDatabaseTask {
             Err(e) => cx.throw_error(e.to_string()),
         }
     }
-}
+}*/

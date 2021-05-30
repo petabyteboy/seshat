@@ -54,15 +54,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "739f4a8db6605981345c5654f3a85b056ce52f37a39d34da03f25bf2151ea16e"
 
 [[package]]
-name = "aho-corasick"
-version = "0.7.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7404febffaa47dac81aa44dba71523c9d069b1bdc50a77db41195149e17f68e5"
-dependencies = [
- "memchr",
-]
-
-[[package]]
 name = "atomicwrites"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -999,9 +990,6 @@ name = "neon-build"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6fe902d44ec11ccd34980b5de63b96a79ce96e231de976338166c34c43bd70b"
-dependencies = [
- "neon-sys",
-]
 
 [[package]]
 name = "neon-macros"
@@ -1021,7 +1009,6 @@ checksum = "120205ff046015597a47ab4fd81aa17f9681eae6e6ee5aa49aa3c020bb83ec99"
 dependencies = [
  "cfg-if 1.0.0",
  "libloading",
- "neon-sys",
  "smallvec",
 ]
 
@@ -1034,16 +1021,6 @@ dependencies = [
  "neon",
  "num",
  "serde",
-]
-
-[[package]]
-name = "neon-sys"
-version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6bf3c0ae89bd68cec801877a881b89cbc976284e901f73d23eafea499494b968"
-dependencies = [
- "cc",
- "regex",
 ]
 
 [[package]]
@@ -1566,10 +1543,7 @@ version = "1.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9251239e129e16308e70d853559389de218ac275b515068abc96829d05b948a"
 dependencies = [
- "aho-corasick",
- "memchr",
  "regex-syntax 0.6.22",
- "thread_local",
 ]
 
 [[package]]
@@ -1915,15 +1889,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "thread_local"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb9bc092d0d51e76b2b19d9d85534ffc9ec2db959a2523cdae0697e2972cd447"
-dependencies = [
- "lazy_static",
 ]
 
 [[package]]

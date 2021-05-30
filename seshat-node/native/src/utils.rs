@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::SeshatDatabase;
+use crate::Seshat;
 use neon::prelude::*;
 use neon_serde;
 use serde_json;
@@ -189,7 +189,7 @@ pub(crate) fn add_historic_events_helper(
     }
 
     let receiver = {
-        let this = cx.argument::<JsBox<RefCell<SeshatDatabase>>>(0)?;
+        let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
         let db = &this.borrow_mut().0;
         db.as_ref().map_or_else(
             || Err("Database has been deleted"),

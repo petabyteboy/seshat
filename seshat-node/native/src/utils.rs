@@ -190,7 +190,7 @@ pub(crate) fn add_historic_events_helper(
 
     let receiver = {
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
-        let db = &this.borrow_mut().0;
+        let db = &this.borrow_mut().database;
         db.as_ref().map_or_else(
             || Err("Database has been deleted"),
             |db| Ok(db.add_historic_events(events, new_checkpoint, old_checkpoint)),

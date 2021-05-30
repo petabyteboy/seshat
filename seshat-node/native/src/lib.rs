@@ -24,7 +24,9 @@ use std::cell::RefCell;
 //use crate::tasks::*;
 use crate::utils::*;
 
-pub struct Seshat (Option<Database>);
+pub struct Seshat {
+    database: Option<Database>,
+}
 pub struct SeshatRecovery {
     database: Option<RecoveryDatabase>,
     info: RecoveryInfo,
@@ -160,7 +162,7 @@ impl Seshat {
         };
 
         Ok(cx.boxed(RefCell::new(
-            Seshat(Some(db))
+            Seshat { database: Some(db) }
         )))
     }
 
@@ -189,7 +191,7 @@ impl Seshat {
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
         let connection = {
-            let db = &mut this.borrow_mut().0;
+            let db = &mut this.borrow_mut().database;
 
             db.as_mut().map_or_else(|| Err("Database has been closed or deleted"),
                                     |db| Ok(db.get_connection()))
@@ -226,7 +228,7 @@ impl Seshat {
 
         let ret = {
             let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
-            let db = &this.borrow().0;
+            let db = &this.borrow().database;
             db.as_ref().map_or_else(|| Err("Database has been closed or deleted"),
                                     |db| { db.add_event(event, profile); Ok(()) } )
         };
@@ -243,7 +245,7 @@ impl Seshat {
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
         let receiver = {
-            let db = &mut this.borrow_mut().0;
+            let db = &mut this.borrow_mut().database;
             db.as_mut().map_or_else(|| Err("Database has been closed or deleted"), |db| {
                 Ok(db.delete_event(&event_id))
             })
@@ -270,7 +272,7 @@ impl Seshat {
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
         let receiver = {
-            let db = &mut this.borrow_mut().0;
+            let db = &mut this.borrow_mut().database;
             db.as_mut().map_or_else(|| Err("Database has been closed or deleted"), |db| {
                 if force {
                     Ok(db.force_commit_no_wait())
@@ -295,7 +297,7 @@ impl Seshat {
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
         let ret = {
-            let db = &mut this.borrow_mut().0;
+            let db = &mut this.borrow_mut().database;
             db.as_mut().map_or_else(|| Err("Database has been closed or deleted"),
                                     |db| Ok(db.reload()))
         };
@@ -318,7 +320,7 @@ impl Seshat {
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
         let connection = {
-            let db = &mut this.borrow_mut().0;
+            let db = &mut this.borrow_mut().database;
 
             db.as_mut().map_or_else(|| Err("Database has been closed or deleted"),
                                     |db| Ok(db.get_connection()))
@@ -347,7 +349,7 @@ impl Seshat {
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
         let path = {
-            let db = &mut this.borrow_mut().0;
+            let db = &mut this.borrow_mut().database;
             db.as_ref().map_or_else(|| Err("Database has been closed or deleted"),
                                     |db| Ok(db.get_path().to_path_buf()))
         };
@@ -368,7 +370,7 @@ impl Seshat {
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
         let connection = {
-            let db = &mut this.borrow_mut().0;
+            let db = &mut this.borrow_mut().database;
 
             db.as_mut().map_or_else(|| Err("Database has been closed or deleted"),
                                     |db| Ok(db.get_connection()))
@@ -397,7 +399,7 @@ impl Seshat {
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
         let connection = {
-            let db = &mut this.borrow_mut().0;
+            let db = &mut this.borrow_mut().database;
 
             db.as_mut().map_or_else(|| Err("Database has been closed or deleted"),
                                     |db| Ok(db.get_connection()))
@@ -425,7 +427,7 @@ impl Seshat {
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
         let connection = {
-            let db = &mut this.borrow_mut().0;
+            let db = &mut this.borrow_mut().database;
 
             db.as_mut().map_or_else(|| Err("Database has been closed or deleted"),
                                     |db| Ok(db.get_connection()))
@@ -454,7 +456,7 @@ impl Seshat {
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
         let connection = {
-            let db = &mut this.borrow_mut().0;
+            let db = &mut this.borrow_mut().database;
 
             db.as_mut().map_or_else(|| Err("Database has been closed or deleted"),
                                     |db| Ok(db.get_connection()))
@@ -491,7 +493,7 @@ impl Seshat {
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
         let ret = {
-            let db = &mut this.borrow_mut().0;
+            let db = &mut this.borrow_mut().database;
 
             if wait {
                 db.as_mut().map_or_else(|| Err("Database has been closed or deleted"), |db| {
@@ -525,7 +527,7 @@ impl Seshat {
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
         let ret = {
-            let db = &mut this.borrow_mut().0;
+            let db = &mut this.borrow_mut().database;
             db.as_ref().map_or_else(|| Err("Database has been closed or deleted"),
                                     |db| Ok(db.search(&term, &config)))
         };
@@ -573,7 +575,7 @@ impl Seshat {
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
         let searcher = {
-            let db = &mut this.borrow_mut().0;
+            let db = &mut this.borrow_mut().database;
             db.as_ref().map_or_else(|| Err("Database has been closed or deleted"),
                                     |db| Ok(db.get_searcher()))
         };
@@ -599,7 +601,7 @@ impl Seshat {
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
         let db = {
-            let db = &mut this.borrow_mut().0;
+            let db = &mut this.borrow_mut().database;
             db.take()
         };
 
@@ -627,7 +629,7 @@ impl Seshat {
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
         let db = {
-            let db = &mut this.borrow_mut().0;
+            let db = &mut this.borrow_mut().database;
             db.take()
         };
 
@@ -652,7 +654,7 @@ impl Seshat {
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
         let db = {
-            let db = &mut this.borrow_mut().0;
+            let db = &mut this.borrow_mut().database;
             db.take()
         };
 
@@ -713,7 +715,7 @@ impl Seshat {
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
         let connection = {
-            let db = &mut this.borrow_mut().0;
+            let db = &mut this.borrow_mut().database;
             db
                 .as_ref()
                 .map_or_else(|| Err("Database has been closed or deleted"),

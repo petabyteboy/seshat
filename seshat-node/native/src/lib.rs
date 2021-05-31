@@ -12,22 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//mod tasks;
+mod tasks;
 mod utils;
 
 use neon::prelude::*;
 use seshat::{Database, Error, LoadConfig, LoadDirection, Profile, RecoveryDatabase, RecoveryInfo};
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
+use std::sync::mpsc;
 use std::cell::RefCell;
+use neon::macro_internal::runtime::tsfn::ThreadsafeFunction;
+use neon::macro_internal::Env;
 
-//use crate::tasks::*;
+use crate::tasks::*;
 use crate::utils::*;
 
 pub struct Seshat {
+    sender: mpsc::Sender<Box<dyn FnOnce(&EventQueue) + Send + 'static>>,
     database: Option<Database>,
 }
 pub struct SeshatRecovery {
+    sender: mpsc::Sender<Box<dyn FnOnce(&EventQueue) + Send + 'static>>,
     database: Option<RecoveryDatabase>,
     info: RecoveryInfo,
 }
@@ -44,14 +49,17 @@ impl SeshatRecovery {
             .expect("Can't open recovery database.");
         let info = database.info().clone();
 
+        let (tx, rx) = mpsc::channel::<Box<dyn FnOnce(&EventQueue) + Send + 'static>>();
+
         Ok(cx.boxed(RefCell::new(SeshatRecovery{
             database: Some(database),
-            info
+            info,
+            sender: tx,
         })))
     }
 
     fn reindex(mut cx: FunctionContext) -> JsResult<JsUndefined> {
-        let f = cx.argument::<JsFunction>(1)?;
+        let f = cx.argument::<JsFunction>(1)?.root(&mut cx);
         let this = cx.argument::<JsBox<RefCell<SeshatRecovery>>>(0)?;
 
         let database = {
@@ -64,14 +72,14 @@ impl SeshatRecovery {
             None => return cx.throw_type_error("A reindex has been already done"),
         };
 
-    //    let task = ReindexTask { inner: Mutex::new(Some(database)) };
-    //    task.schedule(f);
+        let task = ReindexTask { inner: Mutex::new(Some(database)) };
+        task.schedule(this.borrow().sender, f);
 
         Ok(cx.undefined())
     }
 
     fn get_user_version(mut cx: FunctionContext) -> JsResult<JsUndefined> {
-        let f = cx.argument::<JsFunction>(1)?;
+        let f = cx.argument::<JsFunction>(1)?.root(&mut cx);
         let this = cx.argument::<JsBox<RefCell<SeshatRecovery>>>(0)?;
 
         let connection = {
@@ -92,14 +100,14 @@ impl SeshatRecovery {
             Err(e) => return cx.throw_type_error(e),
         };
 
-    //    let task = GetUserVersionTask { connection };
-    //    task.schedule(f);
+        let task = GetUserVersionTask { connection };
+        task.schedule(this.borrow().sender, f);
 
         Ok(cx.undefined())
     }
 
     fn shutdown(mut cx: FunctionContext) -> JsResult<JsUndefined> {
-        let f = cx.argument::<JsFunction>(1)?;
+        let f = cx.argument::<JsFunction>(1)?.root(&mut cx);
 
         let this = cx.argument::<JsBox<RefCell<SeshatRecovery>>>(0)?;
 
@@ -108,8 +116,8 @@ impl SeshatRecovery {
             db.take()
         };
 
-    //    let task = ShutDownRecoveryDatabaseTask(Mutex::new(database));
-    //    task.schedule(f);
+        let task = ShutDownRecoveryDatabaseTask(Mutex::new(database));
+        task.schedule(this.borrow().sender, f);
 
         Ok(cx.undefined())
     }
@@ -161,8 +169,13 @@ impl Seshat {
             }
         };
 
+        let (tx, rx) = mpsc::channel::<Box<dyn FnOnce(&EventQueue) + Send + 'static>>();
+
         Ok(cx.boxed(RefCell::new(
-            Seshat { database: Some(db) }
+            Seshat {
+                database: Some(db),
+                sender: tx,
+            }
         )))
     }
 
@@ -177,17 +190,18 @@ impl Seshat {
     }
 
     fn add_historic_events(mut cx: FunctionContext) -> JsResult<JsUndefined> {
-        let f = cx.argument::<JsFunction>(3)?;
+        let f = cx.argument::<JsFunction>(3)?.root(&mut cx);
+        let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
         let receiver = add_historic_events_helper(&mut cx)?;
 
-    //    let task = AddBacklogTask { receiver };
-    //    task.schedule(f);
+        let task = AddBacklogTask { receiver };
+        task.schedule(this.borrow().sender, f);
 
         Ok(cx.undefined())
     }
 
     fn load_checkpoints(mut cx: FunctionContext) -> JsResult<JsUndefined> {
-        let f = cx.argument::<JsFunction>(1)?;
+        let f = cx.argument::<JsFunction>(1)?.root(&mut cx);
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
         let connection = {
@@ -208,8 +222,8 @@ impl Seshat {
             Err(e) => return cx.throw_type_error(e),
         };
 
-    //    let task = LoadCheckPointsTask { connection };
-    //    task.schedule(f);
+        let task = LoadCheckPointsTask { connection };
+        task.schedule(this.borrow().sender, f);
 
         Ok(cx.undefined())
     }
@@ -241,7 +255,7 @@ impl Seshat {
 
     fn delete_event(mut cx: FunctionContext) -> JsResult<JsUndefined> {
         let event_id = cx.argument::<JsString>(1)?.value(&mut cx);
-        let f = cx.argument::<JsFunction>(2)?;
+        let f = cx.argument::<JsFunction>(2)?.root(&mut cx);
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
         let receiver = {
@@ -256,8 +270,8 @@ impl Seshat {
             Err(e) => return cx.throw_type_error(e),
         };
 
-    //    let task = DeleteEventTask { receiver };
-    //    task.schedule(f);
+        let task = DeleteEventTask { receiver };
+        task.schedule(this.borrow().sender, f);
 
         Ok(cx.undefined())
     }
@@ -287,8 +301,8 @@ impl Seshat {
             Err(e) => return cx.throw_type_error(e),
         };
 
-    //    let task = CommitTask { receiver };
-    //    task.schedule(f);
+        let task = CommitTask { receiver };
+        task.schedule(this.borrow().sender, f);
 
         Ok(cx.undefined())
     }
@@ -315,7 +329,7 @@ impl Seshat {
     }
 
     fn get_stats(mut cx: FunctionContext) -> JsResult<JsUndefined> {
-        let f = cx.argument::<JsFunction>(1)?;
+        let f = cx.argument::<JsFunction>(1)?.root(&mut cx);
 
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
@@ -337,14 +351,14 @@ impl Seshat {
             Err(e) => return cx.throw_type_error(e),
         };
 
-    //    let task = StatsTask { connection };
-    //    task.schedule(f);
+        let task = StatsTask { connection };
+        task.schedule(this.borrow().sender, f);
 
         Ok(cx.undefined())
     }
 
     fn get_size(mut cx: FunctionContext) -> JsResult<JsUndefined> {
-        let f = cx.argument::<JsFunction>(1)?;
+        let f = cx.argument::<JsFunction>(1)?.root(&mut cx);
 
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
@@ -359,14 +373,14 @@ impl Seshat {
             Err(e) => return cx.throw_type_error(e),
         };
 
-    //    let task = GetSizeTask { path };
-    //    task.schedule(f);
+        let task = GetSizeTask { path };
+        task.schedule(this.borrow().sender, f);
 
         Ok(cx.undefined())
     }
 
     fn is_empty(mut cx: FunctionContext) -> JsResult<JsUndefined> {
-        let f = cx.argument::<JsFunction>(1)?;
+        let f = cx.argument::<JsFunction>(1)?.root(&mut cx);
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
         let connection = {
@@ -387,15 +401,15 @@ impl Seshat {
             Err(e) => return cx.throw_type_error(e),
         };
 
-    //    let task = IsEmptyTask { connection };
-    //    task.schedule(f);
+        let task = IsEmptyTask { connection };
+        task.schedule(this.borrow().sender, f);
 
         Ok(cx.undefined())
     }
 
     fn is_room_indexed(mut cx: FunctionContext) -> JsResult<JsUndefined> {
         let room_id = cx.argument::<JsString>(1)?.value(&mut cx);
-        let f = cx.argument::<JsFunction>(2)?;
+        let f = cx.argument::<JsFunction>(2)?.root(&mut cx);
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
         let connection = {
@@ -416,14 +430,14 @@ impl Seshat {
             Err(e) => return cx.throw_type_error(e),
         };
 
-    //    let task = IsRoomIndexedTask { connection, room_id };
-    //    task.schedule(f);
+        let task = IsRoomIndexedTask { connection, room_id };
+        task.schedule(this.borrow().sender, f);
 
         Ok(cx.undefined())
     }
 
     fn get_user_version(mut cx: FunctionContext) -> JsResult<JsUndefined> {
-        let f = cx.argument::<JsFunction>(1)?;
+        let f = cx.argument::<JsFunction>(1)?.root(&mut cx);
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
         let connection = {
@@ -444,15 +458,15 @@ impl Seshat {
             Err(e) => return cx.throw_type_error(e),
         };
 
-    //    let task = GetUserVersionTask { connection };
-    //    task.schedule(f);
+        let task = GetUserVersionTask { connection };
+        task.schedule(this.borrow().sender, f);
 
         Ok(cx.undefined())
     }
 
     fn set_user_version(mut cx: FunctionContext) -> JsResult<JsUndefined> {
         let version = cx.argument::<JsNumber>(1)?;
-        let f = cx.argument::<JsFunction>(2)?;
+        let f = cx.argument::<JsFunction>(2)?.root(&mut cx);
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
         let connection = {
@@ -473,8 +487,8 @@ impl Seshat {
             Err(e) => return cx.throw_type_error(e),
         };
 
-    //    let task = SetUserVersionTask { connection, new_version: version.value(&mut cx) as i64 };
-    //    task.schedule(f);
+        let task = SetUserVersionTask { connection, new_version: version.value(&mut cx) as i64 };
+        task.schedule(this.borrow().sender, f);
 
         Ok(cx.undefined())
     }
@@ -585,18 +599,18 @@ impl Seshat {
             Err(e) => return cx.throw_type_error(e.to_string()),
         };
 
-    //    let task = SearchTask {
-    //        inner: searcher,
-    //        term,
-    //        config
-    //    };
-    //    task.schedule(f);
+        let task = SearchTask {
+            inner: searcher,
+            term,
+            config
+        };
+        task.schedule(this.borrow().sender, f);
 
         Ok(cx.undefined())
     }
 
     fn delete(mut cx: FunctionContext) -> JsResult<JsUndefined> {
-        let f = cx.argument::<JsFunction>(1)?;
+        let f = cx.argument::<JsFunction>(1)?.root(&mut cx);
 
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
@@ -613,18 +627,18 @@ impl Seshat {
         let db_path = db.get_path().to_path_buf();
         let receiver = db.shutdown();
 
-    //    let task = DeleteTask {
-    //        db_path,
-    //        shutdown_receiver: receiver,
-    //    };
-    //    task.schedule(f);
+        let task = DeleteTask {
+            db_path,
+            shutdown_receiver: receiver,
+        };
+        task.schedule(this.borrow().sender, f);
 
         Ok(cx.undefined())
     }
 
     fn change_passphrase(mut cx: FunctionContext) -> JsResult<JsUndefined> {
         let new_passphrase = cx.argument::<JsString>(1)?;
-        let f = cx.argument::<JsFunction>(2)?;
+        let f = cx.argument::<JsFunction>(2)?.root(&mut cx);
 
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
@@ -638,18 +652,18 @@ impl Seshat {
             None => return cx.throw_type_error("Database has been closed or deleted")
         };
 
-    //    let task = ChangePassphraseTask {
-    //        database: Mutex::new(Some(db)),
-    //        new_passphrase: new_passphrase.value(&mut cx),
-    //    };
-    //
-    //    task.schedule(f);
+        let task = ChangePassphraseTask {
+            database: Mutex::new(Some(db)),
+            new_passphrase: new_passphrase.value(&mut cx),
+        };
+    
+        task.schedule(this.borrow().sender, f);
 
         Ok(cx.undefined())
     }
 
     fn shutdown(mut cx: FunctionContext) -> JsResult<JsUndefined> {
-        let f = cx.argument::<JsFunction>(1)?;
+        let f = cx.argument::<JsFunction>(1)?.root(&mut cx);
 
         let this = cx.argument::<JsBox<RefCell<Seshat>>>(0)?;
 
@@ -665,17 +679,17 @@ impl Seshat {
 
         let receiver = db.shutdown();
 
-    //    let task = ShutDownTask {
-    //        shutdown_receiver: receiver,
-    //    };
-    //    task.schedule(f);
+        let task = ShutDownTask {
+            shutdown_receiver: receiver,
+        };
+        task.schedule(this.borrow().sender, f);
 
         Ok(cx.undefined())
     }
 
     fn load_file_events(mut cx: FunctionContext) -> JsResult<JsUndefined> {
         let args = cx.argument::<JsObject>(1)?;
-        let f = cx.argument::<JsFunction>(2)?;
+        let f = cx.argument::<JsFunction>(2)?.root(&mut cx);
 
         let room_id = args
                 .get(&mut cx, "roomId")?
@@ -730,12 +744,12 @@ impl Seshat {
             Err(e) => return cx.throw_type_error(e.to_string()),
         };
 
-    //    let task = LoadFileEventsTask {
-    //        inner: connection,
-    //        config,
-    //    };
-    //
-    //    task.schedule(f);
+        let task = LoadFileEventsTask {
+            inner: connection,
+            config,
+        };
+    
+        task.schedule(this.borrow().sender, f);
 
         Ok(cx.undefined())
     }

@@ -22,9 +22,49 @@ use seshat::{
     CheckpointDirection, Connection, CrawlerCheckpoint, DatabaseStats, LoadConfig, Profile,
     Receiver, RecoveryDatabase, SearchBatch, SearchConfig, Searcher,
 };
+use std::sync::mpsc;
 
 pub(crate) struct CommitTask {
     pub(crate) receiver: Receiver<seshat::Result<()>>,
+}
+
+pub trait Task: Send + Sized + 'static {
+    type Output: Send + 'static;
+    type Error: Send + 'static;
+    type JsEvent: Value;
+
+    fn perform(&self) -> Result<Self::Output, Self::Error>;
+
+    fn complete(
+        self,
+        cx: TaskContext,
+        result: Result<Self::Output, Self::Error>,
+    ) -> JsResult<Self::JsEvent>;
+
+    fn schedule(
+        self,
+        sender: mpsc::Sender<Box<dyn FnOnce(&EventQueue) + Send + 'static>>,
+        callback: Root<JsFunction>,
+    ) {
+        sender.send(Box::new(move |queue: &EventQueue| {
+            let result = self.perform();
+            queue.send(move |mut cx| {
+                let completed = self.complete(cx, result);
+                queue.send(move |mut cx| {
+                    let callback = callback.into_inner(&mut cx);
+                    let this = cx.undefined();
+                    let args = match completed {
+                        Err(e) => vec![cx.error(e.to_string())?.upcast()],
+                        Ok(v) => vec![cx.null().upcast(), v.as_value(&mut cx)],
+                    };
+                    let args = vec![cx.undefined().upcast(), completed?];
+                    callback.call(&mut cx, this, args)?;
+                    Ok(())
+                });
+                Ok(())
+            });
+        }));
+    }
 }
 
 impl Task for CommitTask {
@@ -73,23 +113,23 @@ impl Task for SearchTask {
             Err(e) => return cx.throw_type_error(e.to_string()),
         };
 
-        let results = JsArray::new(&mut cx, ret.results.len() as u32);
-        let count = JsNumber::new(&mut cx, ret.count as f64);
+        let results = cx.array_buffer(ret.results.len() as u32)?;
+        let count = cx.number(ret.count as f64);
 
         for (i, element) in ret.results.drain(..).enumerate() {
             let object = search_result_to_js(&mut cx, element)?;
             results.set(&mut cx, i as u32, object)?;
         }
 
-        let search_result = JsObject::new(&mut cx);
-        let highlights = JsArray::new(&mut cx, 0);
+        let search_result = cx.empty_object();
+        let highlights = cx.array_buffer(0)?;
 
         search_result.set(&mut cx, "count", count)?;
         search_result.set(&mut cx, "results", results)?;
         search_result.set(&mut cx, "highlights", highlights)?;
 
         if let Some(next_batch) = ret.next_batch {
-            let next_batch = JsString::new(&mut cx, next_batch.to_hyphenated().to_string());
+            let next_batch = cx.string(next_batch.to_hyphenated().to_string());
             search_result.set(&mut cx, "next_batch", next_batch)?;
         }
 
@@ -97,7 +137,7 @@ impl Task for SearchTask {
     }
 }
 
-/*pub(crate) struct AddBacklogTask {
+pub(crate) struct AddBacklogTask {
     pub(crate) receiver: Receiver<seshat::Result<bool>>,
 }
 
@@ -116,7 +156,7 @@ impl Task for AddBacklogTask {
         result: Result<Self::Output, Self::Error>,
     ) -> JsResult<Self::JsEvent> {
         match result {
-            Ok(r) => Ok(JsBoolean::new(&mut cx, r)),
+            Ok(r) => Ok(cx.boolean(r)),
             Err(e) => cx.throw_type_error(e.to_string()),
         }
     }
@@ -129,7 +169,7 @@ pub(crate) struct LoadCheckPointsTask {
 impl Task for LoadCheckPointsTask {
     type Output = Vec<CrawlerCheckpoint>;
     type Error = seshat::Error;
-    type JsEvent = JsArray;
+    type JsEvent = JsArrayBuffer;
 
     fn perform(&self) -> Result<Self::Output, Self::Error> {
         self.connection.load_checkpoints()
@@ -145,17 +185,17 @@ impl Task for LoadCheckPointsTask {
             Err(e) => return cx.throw_type_error(e.to_string()),
         };
         let count = checkpoints.len();
-        let ret = JsArray::new(&mut cx, count as u32);
+        let ret = cx.array_buffer(count as u32)?;
 
         for (i, c) in checkpoints.drain(..).enumerate() {
-            let js_checkpoint = JsObject::new(&mut cx);
+            let js_checkpoint = cx.empty_object();
 
-            let room_id = JsString::new(&mut cx, c.room_id);
-            let token = JsString::new(&mut cx, c.token);
-            let full_crawl = JsBoolean::new(&mut cx, c.full_crawl);
+            let room_id = cx.string(c.room_id);
+            let token = cx.string(c.token);
+            let full_crawl = cx.boolean(c.full_crawl);
             let direction = match c.direction {
-                CheckpointDirection::Backwards => JsString::new(&mut cx, "b"),
-                CheckpointDirection::Forwards => JsString::new(&mut cx, "f"),
+                CheckpointDirection::Backwards => cx.string("b"),
+                CheckpointDirection::Forwards => cx.string("f"),
             };
 
             js_checkpoint.set(&mut cx, "roomId", room_id)?;
@@ -189,7 +229,7 @@ impl Task for IsEmptyTask {
         result: Result<Self::Output, Self::Error>,
     ) -> JsResult<Self::JsEvent> {
         match result {
-            Ok(r) => Ok(JsBoolean::new(&mut cx, r)),
+            Ok(r) => Ok(cx.boolean(r)),
             Err(e) => cx.throw_type_error(e.to_string()),
         }
     }
@@ -215,7 +255,7 @@ impl Task for IsRoomIndexedTask {
         result: Result<Self::Output, Self::Error>,
     ) -> JsResult<Self::JsEvent> {
         match result {
-            Ok(r) => Ok(JsBoolean::new(&mut cx, r)),
+            Ok(r) => Ok(cx.boolean(r)),
             Err(e) => cx.throw_type_error(e.to_string()),
         }
     }
@@ -241,10 +281,10 @@ impl Task for StatsTask {
     ) -> JsResult<Self::JsEvent> {
         match result {
             Ok(r) => {
-                let result = JsObject::new(&mut cx);
-                let event_count = JsNumber::new(&mut cx, r.event_count as f64);
-                let room_count = JsNumber::new(&mut cx, r.room_count as f64);
-                let size = JsNumber::new(&mut cx, r.size as f64);
+                let result = cx.empty_object();
+                let event_count = cx.number(r.event_count as f64);
+                let room_count = cx.number(r.room_count as f64);
+                let size = cx.number(r.size as f64);
                 result.set(&mut cx, "eventCount", event_count)?;
                 result.set(&mut cx, "roomCount", room_count)?;
                 result.set(&mut cx, "size", size)?;
@@ -274,7 +314,7 @@ impl Task for GetSizeTask {
         result: Result<Self::Output, Self::Error>,
     ) -> JsResult<Self::JsEvent> {
         match result {
-            Ok(r) => Ok(JsNumber::new(&mut cx, r as f64)),
+            Ok(r) => Ok(cx.number(r as f64)),
             Err(e) => cx.throw_type_error(e.to_string()),
         }
     }
@@ -342,7 +382,7 @@ pub(crate) struct LoadFileEventsTask {
 impl Task for LoadFileEventsTask {
     type Output = Vec<(String, Profile)>;
     type Error = seshat::Error;
-    type JsEvent = JsArray;
+    type JsEvent = JsArrayBuffer;
 
     fn perform(&self) -> Result<Self::Output, Self::Error> {
         self.inner.load_file_events(&self.config)
@@ -358,10 +398,10 @@ impl Task for LoadFileEventsTask {
             Err(e) => return cx.throw_type_error(e.to_string()),
         };
 
-        let results = JsArray::new(&mut cx, ret.len() as u32);
+        let results = cx.array_buffer(ret.len() as u32)?;
 
         for (i, (source, profile)) in ret.drain(..).enumerate() {
-            let result = JsObject::new(&mut cx);
+            let result = cx.empty_object();
 
             let event = deserialize_event(&mut cx, &source)?;
             let profile = profile_to_js(&mut cx, profile)?;
@@ -500,7 +540,7 @@ impl Task for GetUserVersionTask {
     ) -> JsResult<Self::JsEvent> {
         match result {
             Ok(version) => {
-                let version = JsNumber::new(&mut cx, version as f64);
+                let version = cx.number(version as f64);
                 Ok(version)
             }
             Err(e) => cx.throw_error(format!(
@@ -567,4 +607,4 @@ impl Task for ShutDownRecoveryDatabaseTask {
             Err(e) => cx.throw_error(e.to_string()),
         }
     }
-}*/
+}

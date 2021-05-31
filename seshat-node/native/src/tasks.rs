@@ -57,7 +57,6 @@ pub trait Task: Send + Sized + 'static {
                         Err(e) => vec![cx.error(e.to_string())?.upcast()],
                         Ok(v) => vec![cx.null().upcast(), v.as_value(&mut cx)],
                     };
-                    let args = vec![cx.undefined().upcast(), completed?];
                     callback.call(&mut cx, this, args)?;
                     Ok(())
                 });

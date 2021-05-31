@@ -24,10 +24,6 @@ use seshat::{
 };
 use std::sync::mpsc;
 
-pub(crate) struct CommitTask {
-    pub(crate) receiver: Receiver<seshat::Result<()>>,
-}
-
 pub trait Task: Send + Sized + 'static {
     type Output: Send + 'static;
     type Error: Send + 'static;
@@ -37,7 +33,7 @@ pub trait Task: Send + Sized + 'static {
 
     fn complete(
         self,
-        cx: TaskContext,
+        cx: ComputeContext,
         result: Result<Self::Output, Self::Error>,
     ) -> JsResult<Self::JsEvent>;
 
@@ -49,21 +45,22 @@ pub trait Task: Send + Sized + 'static {
         sender.send(Box::new(move |queue: &EventQueue| {
             let result = self.perform();
             queue.send(move |mut cx| {
-                let completed = self.complete(cx, result);
-                queue.send(move |mut cx| {
-                    let callback = callback.into_inner(&mut cx);
-                    let this = cx.undefined();
-                    let args = match completed {
-                        Err(e) => vec![cx.error(e.to_string())?.upcast()],
-                        Ok(v) => vec![cx.null().upcast(), v.as_value(&mut cx)],
-                    };
-                    callback.call(&mut cx, this, args)?;
-                    Ok(())
-                });
+                let completed = cx.compute_scoped(move |mut cx| self.complete(cx, result));
+                let callback = callback.into_inner(&mut cx);
+                let this = cx.undefined();
+                let args = match completed {
+                    Err(e) => vec![cx.error(e.to_string())?.upcast()],
+                    Ok(v) => vec![cx.null().upcast(), v.as_value(&mut cx)],
+                };
+                callback.call(&mut cx, this, args)?;
                 Ok(())
             });
         }));
     }
+}
+
+pub(crate) struct CommitTask {
+    pub(crate) receiver: Receiver<seshat::Result<()>>,
 }
 
 impl Task for CommitTask {
@@ -77,7 +74,7 @@ impl Task for CommitTask {
 
     fn complete(
         self,
-        mut cx: TaskContext,
+        mut cx: ComputeContext,
         result: Result<Self::Output, Self::Error>,
     ) -> JsResult<Self::JsEvent> {
         match result {
@@ -104,7 +101,7 @@ impl Task for SearchTask {
 
     fn complete(
         self,
-        mut cx: TaskContext,
+        mut cx: ComputeContext,
         result: Result<Self::Output, Self::Error>,
     ) -> JsResult<Self::JsEvent> {
         let mut ret = match result {
@@ -151,7 +148,7 @@ impl Task for AddBacklogTask {
 
     fn complete(
         self,
-        mut cx: TaskContext,
+        mut cx: ComputeContext,
         result: Result<Self::Output, Self::Error>,
     ) -> JsResult<Self::JsEvent> {
         match result {
@@ -176,7 +173,7 @@ impl Task for LoadCheckPointsTask {
 
     fn complete(
         self,
-        mut cx: TaskContext,
+        mut cx: ComputeContext,
         result: Result<Self::Output, Self::Error>,
     ) -> JsResult<Self::JsEvent> {
         let mut checkpoints = match result {
@@ -224,7 +221,7 @@ impl Task for IsEmptyTask {
 
     fn complete(
         self,
-        mut cx: TaskContext,
+        mut cx: ComputeContext,
         result: Result<Self::Output, Self::Error>,
     ) -> JsResult<Self::JsEvent> {
         match result {
@@ -250,7 +247,7 @@ impl Task for IsRoomIndexedTask {
 
     fn complete(
         self,
-        mut cx: TaskContext,
+        mut cx: ComputeContext,
         result: Result<Self::Output, Self::Error>,
     ) -> JsResult<Self::JsEvent> {
         match result {
@@ -275,7 +272,7 @@ impl Task for StatsTask {
 
     fn complete(
         self,
-        mut cx: TaskContext,
+        mut cx: ComputeContext,
         result: Result<Self::Output, Self::Error>,
     ) -> JsResult<Self::JsEvent> {
         match result {
@@ -309,7 +306,7 @@ impl Task for GetSizeTask {
 
     fn complete(
         self,
-        mut cx: TaskContext,
+        mut cx: ComputeContext,
         result: Result<Self::Output, Self::Error>,
     ) -> JsResult<Self::JsEvent> {
         match result {
@@ -340,7 +337,7 @@ impl Task for ShutDownTask {
 
     fn complete(
         self,
-        mut cx: TaskContext,
+        mut cx: ComputeContext,
         result: Result<Self::Output, Self::Error>,
     ) -> JsResult<Self::JsEvent> {
         match result {
@@ -363,7 +360,7 @@ impl Task for DeleteTask {
 
     fn complete(
         self,
-        mut cx: TaskContext,
+        mut cx: ComputeContext,
         result: Result<Self::Output, Self::Error>,
     ) -> JsResult<Self::JsEvent> {
         match result {
@@ -389,7 +386,7 @@ impl Task for LoadFileEventsTask {
 
     fn complete(
         self,
-        mut cx: TaskContext,
+        mut cx: ComputeContext,
         result: Result<Self::Output, Self::Error>,
     ) -> JsResult<Self::JsEvent> {
         let mut ret = match result {
@@ -449,7 +446,7 @@ impl Task for ReindexTask {
 
     fn complete(
         self,
-        mut cx: TaskContext,
+        mut cx: ComputeContext,
         result: Result<Self::Output, Self::Error>,
     ) -> JsResult<Self::JsEvent> {
         match result {
@@ -474,7 +471,7 @@ impl Task for DeleteEventTask {
 
     fn complete(
         self,
-        mut cx: TaskContext,
+        mut cx: ComputeContext,
         result: Result<Self::Output, Self::Error>,
     ) -> JsResult<Self::JsEvent> {
         match result {
@@ -506,7 +503,7 @@ impl Task for ChangePassphraseTask {
 
     fn complete(
         self,
-        mut cx: TaskContext,
+        mut cx: ComputeContext,
         result: Result<Self::Output, Self::Error>,
     ) -> JsResult<Self::JsEvent> {
         match result {
@@ -534,7 +531,7 @@ impl Task for GetUserVersionTask {
 
     fn complete(
         self,
-        mut cx: TaskContext,
+        mut cx: ComputeContext,
         result: Result<Self::Output, Self::Error>,
     ) -> JsResult<Self::JsEvent> {
         match result {
@@ -566,7 +563,7 @@ impl Task for SetUserVersionTask {
 
     fn complete(
         self,
-        mut cx: TaskContext,
+        mut cx: ComputeContext,
         result: Result<Self::Output, Self::Error>,
     ) -> JsResult<Self::JsEvent> {
         match result {
@@ -598,7 +595,7 @@ impl Task for ShutDownRecoveryDatabaseTask {
 
     fn complete(
         self,
-        mut cx: TaskContext,
+        mut cx: ComputeContext,
         result: Result<Self::Output, Self::Error>,
     ) -> JsResult<Self::JsEvent> {
         match result {
